@@ -1,6 +1,6 @@
 CC		:= g++
-LDFLAGS := $(shell pkg-config gl glfw3 x11 xrandr xi sdl2 SDL2_image SDL2_mixer --libs) -lpthread -ldl
-CFLAGS	:= -Iinclude $(shell pkg-config gl glfw3 x11 xrandr xi sdl2 SDL2_image SDL2_mixer --cflags) -g
+LDFLAGS := -lpthread -ldl $(shell pkg-config gl glfw3 x11 xrandr xi sdl2 SDL2_image SDL2_mixer assimp --libs)
+CFLAGS	:= -Iinclude -g   $(shell pkg-config gl glfw3 x11 xrandr xi sdl2 SDL2_image SDL2_mixer assimp --cflags)
 
 TARGETS	:= main.cpp
 

@@ -13,11 +13,13 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 #include <SDL2/SDL_mixer.h>
+#include <time.h>
 
 //local includes
 #include <stb_image/stb_image.h>
 #include <shader.h>
 #include <camera.h>
+#include <model.h>
 
 unsigned int screenWidth = 1024;
 unsigned int screenHeight = 768;
@@ -141,6 +143,9 @@ float deltaTime = 0.0f;
 uint64_t now;
 uint64_t last;
 
+uint32_t lastClock = -1;
+unsigned int pastSeconds = 0;
+
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 
 void errorHandler(int ec, const char* msg);
@@ -196,7 +201,7 @@ int main() {
 	//in this case it'll have the whole window
 	glViewport(0, 0, screenWidth, screenHeight);
 
-	SDL_SetRelativeMouseMode(SDL_TRUE);
+//	SDL_SetRelativeMouseMode(SDL_TRUE);
 
 	//generate vertex buffer object and vertex array object
 	unsigned int VBO;
@@ -468,6 +473,7 @@ int main() {
 	Mix_VolumeMusic(20);
 
 	Mix_Chunk* sample = Mix_LoadWAV(RESPATH"/sfx/shoot.ogg");
+	Mix_Chunk* succ = Mix_LoadWAV(RESPATH"/sfx/succ.ogg");
 	
 	SDL_Event event;
 
@@ -477,6 +483,9 @@ int main() {
 	last = 0;
 	deltaTime = 0;
 
+	Model chick(RESPATH"/models/chick.dae");
+
+	bool mouseGrab = false;
 
 	//main render loop
 	while (!shouldClose) {
@@ -486,6 +495,8 @@ int main() {
 
 		deltaTime = ((now - last)*1000 / (double)SDL_GetPerformanceFrequency() );
 		deltaTime /= 1000;
+
+		uint32_t flags = SDL_GetWindowFlags(window);
 
 		//clear to dark aqua-ish color
 		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
@@ -497,31 +508,51 @@ int main() {
 					shouldClose = true;
 					break;
 				case SDL_MOUSEMOTION:
-					camera.ProcessMouseMovement(event.motion.xrel, event.motion.yrel * -1);
+					if (flags & SDL_WINDOW_INPUT_FOCUS)
+						if (mouseGrab)
+							camera.ProcessMouseMovement(event.motion.xrel, event.motion.yrel * -1);
 					break;
 				case SDL_KEYDOWN:
 					if (event.key.keysym.sym == SDLK_ESCAPE)
 						shouldClose = true;
+					else if (event.key.keysym.sym == SDLK_m) {
+						if (mouseGrab) {
+							mouseGrab = false;
+						}
+						else {
+							mouseGrab = true;
+						}
+
+					}
 				case SDL_MOUSEBUTTONDOWN:
-					if (event.button.button == SDL_BUTTON_LEFT)
-						Mix_PlayChannel(-1, sample, 0);
+					if (event.button.button == SDL_BUTTON_LEFT && flags & SDL_WINDOW_INPUT_FOCUS)
+						if (mouseGrab)
+							Mix_PlayChannel(-1, sample, 0);
 					break;
 			}
+		}
+		if (mouseGrab) {
+			SDL_SetRelativeMouseMode(SDL_TRUE);
+		}
+		else {
+			SDL_SetRelativeMouseMode(SDL_FALSE);
 		}
 
 		const uint8_t* state = SDL_GetKeyboardState(NULL);
 
-		if (state[SDL_SCANCODE_W]) {
-			camera.ProcessKeyboard(FORWARD, deltaTime);
-		}
-		else if (state[SDL_SCANCODE_S]) {
-			camera.ProcessKeyboard(BACKWARD, deltaTime);
-		}
-		if (state[SDL_SCANCODE_A]) {
-			camera.ProcessKeyboard(LEFT, deltaTime);
-		}
-		else if (state[SDL_SCANCODE_D]) {
-			camera.ProcessKeyboard(RIGHT, deltaTime);
+		if (mouseGrab) {
+			if (state[SDL_SCANCODE_W]) {
+				camera.ProcessKeyboard(FORWARD, deltaTime);
+			}
+			else if (state[SDL_SCANCODE_S]) {
+				camera.ProcessKeyboard(BACKWARD, deltaTime);
+			}
+			if (state[SDL_SCANCODE_A]) {
+				camera.ProcessKeyboard(LEFT, deltaTime);
+			}
+			else if (state[SDL_SCANCODE_D]) {
+				camera.ProcessKeyboard(RIGHT, deltaTime);
+			}
 		}
 
 		glActiveTexture(GL_TEXTURE0);
@@ -568,6 +599,15 @@ int main() {
 		glBindVertexArray(VAO);
 		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
+
+//cock
+		trans = glm::mat4(1.0f);
+		trans = glm::translate(trans, glm::vec3(0.0f, 0.0f, -1.0f));
+		trans = glm::scale(trans, glm::vec3(0.02f, 0.02f, 0.02f));
+		trans = glm::rotate(trans, glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
+		myShader.setMat4("transform", trans);
+
+		chick.Draw(myShader);
 
 //skybox
 		myShader.use();
@@ -639,6 +679,12 @@ int main() {
 		angle += angleInc;
 		//scale += scaleInc;
 		//if (scale >= 1.3f || scale <= 0.4f) scaleInc *= -1.0f;
+
+
+		printf ("%d\n", flags & SDL_WINDOW_INPUT_FOCUS);
+
+		if (rand() % 256 == 0)
+			Mix_PlayChannel(-1, succ, 0);
 
 	}
 
