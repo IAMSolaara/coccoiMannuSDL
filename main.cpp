@@ -6,19 +6,22 @@
 #include <fstream>
 #include <sstream>
 #include <glad/glad.h>
-#include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <GL/gl.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
+#include <SDL2/SDL_mixer.h>
 
 //local includes
 #include <stb_image/stb_image.h>
 #include <shader.h>
 #include <camera.h>
 
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 600
-#define WINDOW_TITLE "LearnOpenGL"
+unsigned int screenWidth = 1024;
+unsigned int screenHeight = 768;
+#define WINDOW_TITLE "Succhiapalle"
 
 #define RESPATH "./res"
 
@@ -120,21 +123,12 @@ float angleInc = 2.0f;
 //bool autoRotate = false;
 
 float deltaTime = 0.0f;
-float lastFrame = 0.0f;
 
-float lastX = (float)SCREEN_WIDTH / 2;
-float lastY = (float)SCREEN_HEIGHT / 2;
-
-bool firstMouse = true;
+uint64_t now;
+uint64_t last;
 
 Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
 
-//callbacks
-void framebuffer_size_callback(GLFWwindow* window, int width, int height);
-void mouse_pos_callback(GLFWwindow* window, double xpos, double ypos);
-
-//custom funcs
-void inputHandler(GLFWwindow* window);
 void errorHandler(int ec, const char* msg);
 
 float clamp(float d, float min, float max) {
@@ -143,48 +137,52 @@ float clamp(float d, float min, float max) {
 }
 
 int main() {
-	//initialize glfw
-	glfwInit();
+	if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+		fprintf(stderr, "Error initializing SDL: \n%s\n", SDL_GetError());
+		return -1;
+	}
+	if (Mix_OpenAudio(22050, MIX_DEFAULT_FORMAT, 2, 4096) == -1) {
+		fprintf(stderr, "Error initializing SDL_Mixer: \n%s\n", SDL_GetError());
+	}
 
-	glfwSetErrorCallback(errorHandler);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-	//set OGL version hints so glfw will work only on supported versions
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
-	//use core profile because we're modern chads
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+	//create a screenWidthxscreenHeight window with title WINDOW_TITLE, then make it the current OGL context.
+	//exit if errored
+	SDL_Window* window = SDL_CreateWindow("Succhiapalle", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screenWidth, screenHeight, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL);
+	if (!window) {
+		fprintf(stderr, "Error creating SDL window: \n%s\n", SDL_GetError());
+		return -2;
+	}
+	SDL_GLContext context = SDL_GL_CreateContext(window);
+	if (!context) {
+		fprintf(stderr, "Error creating OpenGL context: \n%s\n", SDL_GetError());
+		return -3;
+	}
+
+	SDL_GL_SetSwapInterval(1);
 
 	//macOS required workaround
 #if defined(__APPLE__) && defined(TARGET_OS_MAC)
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 #endif
 
-	//create a SCREEN_WIDTHxSCREEN_HEIGHT window with title WINDOW_TITLE, then make it the current OGL context.
-	//exit if errored
-	GLFWwindow* window = glfwCreateWindow(SCREEN_WIDTH, SCREEN_HEIGHT, WINDOW_TITLE, NULL, NULL);
-	if (!window) {
-		fprintf(stderr, "Error creating GLFW window.\n");
-		glfwTerminate();
-		return -1;
-	}
-	glfwMakeContextCurrent(window);
-
 	//set up GLAD function loader
-	if (!gladLoadGLLoader( (GLADloadproc)glfwGetProcAddress )) {
+	if (!gladLoadGLLoader( (GLADloadproc)SDL_GL_GetProcAddress)) {
 		fprintf(stderr, "Error initializing GLAD.\n");
-		return -1;
+		return -4;
 	}
 
 	//set viewport start coords and width,height.
 	//in this case it'll have the whole window
-	glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+	glViewport(0, 0, screenWidth, screenHeight);
 
-	//set resize callback to handle window resize
-	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
-
-	glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-	glfwSetCursorPosCallback(window, mouse_pos_callback);
+	SDL_SetRelativeMouseMode(SDL_TRUE);
 
 	//generate vertex buffer object and vertex array object
 	unsigned int VBO;
@@ -320,12 +318,6 @@ int main() {
 	if (textureData) {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, textureData);
 		glGenerateMipmap(GL_TEXTURE_2D);
-		int wQ, hQ;
-		int miplevel = 0;
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, miplevel, GL_TEXTURE_WIDTH, &w);
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, miplevel, GL_TEXTURE_HEIGHT, &h);
-		printf("SBI Size:\t%d\t%d\n",w,h);
-		printf("Queried Size\t%d\t%d\n",wQ,hQ);
 	}
 	else {
 		fprintf(stderr, "Texture load error.\n");
@@ -345,12 +337,6 @@ int main() {
 	if (textureData) {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, textureData);
 		glGenerateMipmap(GL_TEXTURE_2D);
-		int wQ, hQ;
-		int miplevel = 0;
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, miplevel, GL_TEXTURE_WIDTH, &w);
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, miplevel, GL_TEXTURE_HEIGHT, &h);
-		printf("SBI Size:\t%d\t%d\n",w,h);
-		printf("Queried Size\t%d\t%d\n",wQ,hQ);
 	}
 	else {
 		fprintf(stderr, "Texture load error.\n");
@@ -370,12 +356,25 @@ int main() {
 	if (textureData) {
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, textureData);
 		glGenerateMipmap(GL_TEXTURE_2D);
-		int wQ, hQ;
-		int miplevel = 0;
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, miplevel, GL_TEXTURE_WIDTH, &w);
-		glGetTexLevelParameteriv(GL_TEXTURE_2D, miplevel, GL_TEXTURE_HEIGHT, &h);
-		printf("SBI Size:\t%d\t%d\n",w,h);
-		printf("Queried Size\t%d\t%d\n",wQ,hQ);
+	}
+	else {
+		fprintf(stderr, "Texture load error.\n");
+	}
+	stbi_image_free(textureData);
+
+	unsigned int texture4;
+	glGenTextures(1, &texture4);
+	glBindTexture(GL_TEXTURE_2D, texture4);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+	textureData = stbi_load(RESPATH"/textures/cock.png", &w, &h, &nChannels, 0);
+	if (textureData) {
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, textureData);
+		glGenerateMipmap(GL_TEXTURE_2D);
 	}
 	else {
 		fprintf(stderr, "Texture load error.\n");
@@ -385,22 +384,71 @@ int main() {
 	myShader.use();
 
 	glEnable(GL_DEPTH_TEST);
+
+	Mix_Music* music = Mix_LoadMUS(RESPATH"/music/bgm.mp3");
+	if (!music) {
+		fprintf(stderr, "Music load error: \n%s\n", SDL_GetError());
+	}
+
+	Mix_PlayMusic(music, -1);
+	Mix_VolumeMusic(20);
+
+	Mix_Chunk* sample = Mix_LoadWAV(RESPATH"/sfx/shoot.ogg");
 	
+	SDL_Event event;
+
+	bool shouldClose = false;
+
+	now = SDL_GetPerformanceCounter();
+	last = 0;
+	deltaTime = 0;
+
+
 	//main render loop
-	while (!glfwWindowShouldClose(window)) {
-		float currentFrame = glfwGetTime();
-        deltaTime = currentFrame - lastFrame;
-        lastFrame = currentFrame;
+	while (!shouldClose) {
+
+		last = now;
+		now = SDL_GetPerformanceCounter();
+
+		deltaTime = ((now - last)*1000 / (double)SDL_GetPerformanceFrequency() );
+		deltaTime /= 1000;
 
 		//clear to dark aqua-ish color
 		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		//poll events
-		glfwPollEvents();
-		
-		//handle input events
-		inputHandler(window);
+		while (SDL_PollEvent(&event)) {
+			switch (event.type) {
+				case SDL_QUIT:
+					shouldClose = true;
+					break;
+				case SDL_MOUSEMOTION:
+					camera.ProcessMouseMovement(event.motion.xrel, event.motion.yrel * -1);
+					break;
+				case SDL_KEYDOWN:
+					if (event.key.keysym.sym == SDLK_ESCAPE)
+						shouldClose = true;
+				case SDL_MOUSEBUTTONDOWN:
+					if (event.button.button == SDL_BUTTON_LEFT)
+						Mix_PlayChannel(-1, sample, 0);
+					break;
+			}
+		}
+
+		const uint8_t* state = SDL_GetKeyboardState(NULL);
+
+		if (state[SDL_SCANCODE_W]) {
+			camera.ProcessKeyboard(FORWARD, deltaTime);
+		}
+		else if (state[SDL_SCANCODE_S]) {
+			camera.ProcessKeyboard(BACKWARD, deltaTime);
+		}
+		if (state[SDL_SCANCODE_A]) {
+			camera.ProcessKeyboard(LEFT, deltaTime);
+		}
+		else if (state[SDL_SCANCODE_D]) {
+			camera.ProcessKeyboard(RIGHT, deltaTime);
+		}
 
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, texture);
@@ -408,6 +456,8 @@ int main() {
 		glBindTexture(GL_TEXTURE_2D, texture2);
 		glActiveTexture(GL_TEXTURE2);
 		glBindTexture(GL_TEXTURE_2D, texture3);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, texture4);
 
 		glm::mat4 trans;
 
@@ -422,7 +472,7 @@ int main() {
 
 		glm::mat4 view = camera.GetViewMatrix();
 
-		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)SCREEN_WIDTH / (float)SCREEN_HEIGHT, 0.1f, 100.0f);
+		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
 
 		myShader.setMat4("transform", trans);
 		myShader.setMat4("model", model);
@@ -442,6 +492,15 @@ int main() {
 		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 
+		trans = glm::scale(glm::mat4(1.0f), glm::vec3(20.0f, 20.0f, 20.0f));
+		myShader.setMat4("transform", trans);
+		myShader.setInt("mytexture", 3);
+
+		glBindVertexArray(VAO);
+		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+
+
 //bottom thing
 		myShader.setMat4("transform", glm::mat4(1.0f));
 
@@ -455,8 +514,9 @@ int main() {
 
 //top sign thing		
 		trans = glm::mat4(1.0f);
+		//trans = glm::rotate(trans, (float)sin(/*glfwGetTime()*/1), glm::vec3(0.0, 0.0, 1.0));
 		trans = glm::rotate(trans, glm::radians(90.0f), glm::vec3(1.0, 0.0, 0.0));
-		trans = glm::rotate(trans, (float)sin(glfwGetTime()), glm::vec3(0.0, 0.0, 1.0));
+		trans = glm::rotate(trans, sin(glm::radians(angle)), glm::vec3(0.0, 0.0, 1.0));
 		myShader.setMat4("transform", trans);
 
 		myShader.setInt("mytexture", 2);
@@ -468,7 +528,8 @@ int main() {
 		glBindVertexArray(0);
 		
 		//swap buffers to present to screen
-		glfwSwapBuffers(window);
+		//glfwSwapBuffers(window);
+		SDL_GL_SwapWindow(window);
 
 		
 		angle += angleInc;
@@ -489,75 +550,12 @@ int main() {
 	glDeleteBuffers(1, &VBO2);
 	glDeleteBuffers(1, &EBO2);
 
-	//kill glfw
-	glfwTerminate();
+	SDL_GL_DeleteContext(context);
+	SDL_DestroyWindow(window);
+
+	Mix_FreeMusic(music);
+	Mix_CloseAudio();
+
+	SDL_Quit();
 	return 0;
-}
-
-void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
-	glViewport(0,0,width,height);
-}
-
-void inputHandler(GLFWwindow* window) {
-	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-		glfwSetWindowShouldClose(window, 1);
-	}
-
-	//	lower red
-	if (glfwGetKey(window, GLFW_KEY_KP_4) == GLFW_PRESS) {
-		//angle -= angleInc;
-	}
-
-	//	lower green
-	if (glfwGetKey(window, GLFW_KEY_KP_5) == GLFW_PRESS) {
-		//autoRotate = !autoRotate;
-	}
-
-	//	lower green
-	if (glfwGetKey(window, GLFW_KEY_KP_6) == GLFW_PRESS) {
-		//angle += angleInc;
-	}
-
-	//	lower green
-	if (glfwGetKey(window, GLFW_KEY_KP_ADD) == GLFW_PRESS) {
-		//scale = clamp(scale+0.006f, 0.4f, 2.0f);
-	}
-
-	//	lower green
-	if (glfwGetKey(window, GLFW_KEY_KP_SUBTRACT) == GLFW_PRESS) {
-		//scale = clamp(scale-0.006f, 0.4f, 2.0f);
-	}
-	
-	
-	if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
-		//angleInc *= -1.0f;
-	}
-
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.ProcessKeyboard(FORWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.ProcessKeyboard(LEFT, deltaTime);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.ProcessKeyboard(RIGHT, deltaTime);
-}
-
-void errorHandler(int ec, const char* msg) {
-	printf("GLFW ERROR (Code %d): %s\n", ec, msg);
-}
-
-void mouse_pos_callback(GLFWwindow* window, double xpos, double ypos) {
-	if (firstMouse) {
-		lastX = xpos;
-		lastY = ypos;
-		firstMouse = false;
-	}
-
-	float xoff = xpos - lastX;
-	float yoff = lastY - ypos;
-	lastX = xpos;
-	lastY = ypos;
-
-	camera.ProcessMouseMovement(xoff, yoff);
 }
