@@ -8,6 +8,6 @@ out vec4 FragColor;
 
 void main() {
     //FragColor = vec4( 1.0f * (gl_FragCoord.x / 800), 1.0f * (gl_FragCoord.y / 600), 1.0f * gl_FragCoord.z, 0.0f );
-    //FragColor = vec4(vertexColor.xyz, 1.0f);
-    FragColor = vec4(vertexColor, 1.0f);
+    FragColor = vec4(vertexColor, 0.7f);
+    //FragColor = texture(mytexture, textureCoord) * vec4(vertexColor, 0.7f);
 }

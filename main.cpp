@@ -110,6 +110,18 @@ unsigned int tex3Indexes[] = {
 	0, 2, 3,
 };
 
+float crosshairVertices[] = {
+    -0.01f,   0.05f,   0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f,
+    -0.01f,  -0.05f,   0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f,
+     0.01f,   0.05f,   0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f,
+	 0.01f,  -0.05f,   0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+} ;
+
+unsigned int crosshairIndexes[] = {
+	0, 1, 3,
+	0, 2, 3,
+};
+
 float r = 0.0f;
 float g = 0.0f;
 float b = 0.0f;
@@ -119,6 +131,8 @@ float angle = 0.0f;
 float scale = 0.4f;
 float scaleInc = 0.004f;
 float angleInc = 2.0f;
+
+float projZ =0.0f;
 
 //bool autoRotate = false;
 
@@ -154,7 +168,7 @@ int main() {
 
 	//create a screenWidthxscreenHeight window with title WINDOW_TITLE, then make it the current OGL context.
 	//exit if errored
-	SDL_Window* window = SDL_CreateWindow("Succhiapalle", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screenWidth, screenHeight, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL);
+	SDL_Window* window = SDL_CreateWindow(WINDOW_TITLE, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screenWidth, screenHeight, SDL_WINDOW_SHOWN | SDL_WINDOW_OPENGL);
 	if (!window) {
 		fprintf(stderr, "Error creating SDL window: \n%s\n", SDL_GetError());
 		return -2;
@@ -298,8 +312,47 @@ int main() {
 	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
 	glEnableVertexAttribArray(2);
 
+	//generate vertex buffer object and vertex array object
+	unsigned int VBO4;
+	unsigned int VAO4;
+
+	glGenBuffers(1, &VBO4);
+	glGenVertexArrays(1, &VAO4);
+
+	//generate element buffer object
+	unsigned int EBO4;
+	glGenBuffers(1, &EBO4);
+
+	//bind VAO3 to vertex arrays.
+	glBindVertexArray(VAO4);
+
+	//bind VBO3 buffer to the GL_ARRAY_BUFFER, which we'll use as vertex buffer
+	glBindBuffer(GL_ARRAY_BUFFER, VBO4);
+
+	//transfer verts array into VBO3 buffer
+	glBufferData(GL_ARRAY_BUFFER, sizeof(crosshairVertices), crosshairVertices, GL_STATIC_DRAW);
+
+	//bind EBO3 to GL_ELEMENT_ARRAY_BUFFER
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO4);
+
+	//transfer indices to element buffer
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(crosshairIndexes), crosshairIndexes, GL_STATIC_DRAW);
+
+	//set vertex coords position attributes
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+
+	//set vertex color position attributes
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+
+	//set vertex texture position attributes
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
     //create shader program to render poly
 	Shader myShader(RESPATH"/shaders/vertex/simple.vs", RESPATH"/shaders/fragment/simple.fs");
+	Shader myShader2(RESPATH"/shaders/vertex/crosshair.vs", RESPATH"/shaders/fragment/crosshair.fs");
 	//Shader myShader2(RESPATH"/shaders/vertex/simple.vs", RESPATH"/shaders/fragment/simple.fs");
 
 	unsigned int texture;
@@ -354,7 +407,7 @@ int main() {
 
 	textureData = stbi_load(RESPATH"/textures/caca.png", &w, &h, &nChannels, 0);
 	if (textureData) {
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, textureData);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, textureData);
 		glGenerateMipmap(GL_TEXTURE_2D);
 	}
 	else {
@@ -381,9 +434,30 @@ int main() {
 	}
 	stbi_image_free(textureData);
 
+	unsigned int texture5;
+	glGenTextures(1, &texture5);
+	glBindTexture(GL_TEXTURE_2D, texture5);
+
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+	textureData = stbi_load(RESPATH"/textures/crosshair.png", &w, &h, &nChannels, 0);
+	if (textureData) {
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, textureData);
+		glGenerateMipmap(GL_TEXTURE_2D);
+	}
+	else {
+		fprintf(stderr, "Texture load error.\n");
+	}
+	stbi_image_free(textureData);
+
 	myShader.use();
 
 	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 	Mix_Music* music = Mix_LoadMUS(RESPATH"/music/bgm.mp3");
 	if (!music) {
@@ -458,6 +532,10 @@ int main() {
 		glBindTexture(GL_TEXTURE_2D, texture3);
 		glActiveTexture(GL_TEXTURE3);
 		glBindTexture(GL_TEXTURE_2D, texture4);
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, texture5);
+
+		myShader.use();
 
 		glm::mat4 trans;
 
@@ -472,7 +550,7 @@ int main() {
 
 		glm::mat4 view = camera.GetViewMatrix();
 
-		glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
+		glm::mat4 projection = glm::perspective(glm::radians(90.0f), (float)screenWidth / (float)screenHeight, 0.1f, 100.0f);
 
 		myShader.setMat4("transform", trans);
 		myShader.setMat4("model", model);
@@ -487,10 +565,15 @@ int main() {
 		//get `coolColor` uniform location to inject r,g,b,w vars into
 		//int offsetLocation = glGetUniformLocation(shaderProgram, "coolColor");
 		//glUniform4f(offsetLocation, r, g, b, w);
-
 		glBindVertexArray(VAO);
 		glDrawElements(GL_TRIANGLES, 36, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
+
+//skybox
+		myShader.use();
+		myShader.setMat4("model", model);
+		myShader.setMat4("view", view);
+		myShader.setMat4("projection", projection);
 
 		trans = glm::scale(glm::mat4(1.0f), glm::vec3(20.0f, 20.0f, 20.0f));
 		myShader.setMat4("transform", trans);
@@ -527,15 +610,36 @@ int main() {
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 		glBindVertexArray(0);
 		
+
+//crosshair
+		//myShader2.setMat4("transform", glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 2.0f, 2.0f)));
+		myShader2.use();
+
+		myShader2.setMat4("transform", glm::mat4(1.0f));
+		myShader2.setInt("mytexture", 4);
+
+		glBindVertexArray(VAO4);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+
+		glm::mat4 tr2 = glm::mat4(1.0f);
+		tr2 = glm::scale(tr2, glm::vec3(1.0f, (float) screenWidth / screenHeight, 1.0f ));
+		tr2 = glm::rotate(tr2, glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		myShader2.setMat4("transform", tr2);
+		myShader2.setInt("mytexture", 4);
+
+		glBindVertexArray(VAO4);
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+		glBindVertexArray(0);
+
 		//swap buffers to present to screen
 		//glfwSwapBuffers(window);
 		SDL_GL_SwapWindow(window);
-
 		
 		angle += angleInc;
 		//scale += scaleInc;
 		//if (scale >= 1.3f || scale <= 0.4f) scaleInc *= -1.0f;
-		
+
 	}
 
 	glDeleteVertexArrays(1, &VAO);
@@ -549,6 +653,14 @@ int main() {
 	glDeleteVertexArrays(1, &VAO2);
 	glDeleteBuffers(1, &VBO2);
 	glDeleteBuffers(1, &EBO2);
+
+	glDeleteVertexArrays(1, &VAO3);
+	glDeleteBuffers(1, &VBO3);
+	glDeleteBuffers(1, &EBO3);
+
+	glDeleteVertexArrays(1, &VAO4);
+	glDeleteBuffers(1, &VBO4);
+	glDeleteBuffers(1, &EBO4);
 
 	SDL_GL_DeleteContext(context);
 	SDL_DestroyWindow(window);
