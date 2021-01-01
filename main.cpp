@@ -358,6 +358,7 @@ int main() {
     //create shader program to render poly
 	Shader myShader(RESPATH"/shaders/vertex/simple.vs", RESPATH"/shaders/fragment/simple.fs");
 	Shader myShader2(RESPATH"/shaders/vertex/crosshair.vs", RESPATH"/shaders/fragment/crosshair.fs");
+	Shader modelShader(RESPATH"/shaders/vertex/model.vs", RESPATH"/shaders/fragment/model.fs");
 	//Shader myShader2(RESPATH"/shaders/vertex/simple.vs", RESPATH"/shaders/fragment/simple.fs");
 
 	unsigned int texture;
@@ -601,13 +602,19 @@ int main() {
 		glBindVertexArray(0);
 
 //cock
+		modelShader.use();
+
 		trans = glm::mat4(1.0f);
 		trans = glm::translate(trans, glm::vec3(0.0f, 0.0f, -1.0f));
 		trans = glm::scale(trans, glm::vec3(0.02f, 0.02f, 0.02f));
 		trans = glm::rotate(trans, glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
-		myShader.setMat4("transform", trans);
+		modelShader.setMat4("transform", trans);
 
-		chick.Draw(myShader);
+		modelShader.setMat4("model", model);
+		modelShader.setMat4("view", view);
+		modelShader.setMat4("projection", projection);
+
+		chick.Draw(modelShader);
 
 //skybox
 		myShader.use();
@@ -679,9 +686,6 @@ int main() {
 		angle += angleInc;
 		//scale += scaleInc;
 		//if (scale >= 1.3f || scale <= 0.4f) scaleInc *= -1.0f;
-
-
-		printf ("%d\n", flags & SDL_WINDOW_INPUT_FOCUS);
 
 		if (rand() % 256 == 0)
 			Mix_PlayChannel(-1, succ, 0);
